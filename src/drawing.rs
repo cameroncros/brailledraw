@@ -1,8 +1,17 @@
+use std::cmp::PartialEq;
 use crate::{CHAR_HEIGHT, CHAR_WIDTH};
+
+#[derive(PartialEq)]
+pub(crate) enum Mode {
+    None,
+    Draw,
+    Erase
+}
 
 pub struct Drawing {
     pub data: Vec<Vec<BraileChar>>,
     pub dirty: bool,
+    pub mode: Mode
 }
 
 impl Drawing {
@@ -21,7 +30,7 @@ impl Drawing {
             },
             None => return
         };
-        if cell.set_pixel(col_pixel, row_pixel, CHAR_WIDTH, CHAR_HEIGHT) {
+        if cell.set_pixel(&self.mode, col_pixel, row_pixel, CHAR_WIDTH, CHAR_HEIGHT) {
             self.dirty = true;
         }
     }
@@ -33,7 +42,8 @@ impl Drawing {
                     BraileChar::new()
                 }).collect::<Vec<BraileChar>>()
             }).collect::<Vec<Vec<BraileChar>>>(),
-            dirty: true
+            dirty: true,
+            mode: Mode::None
         }
     }
 
@@ -63,6 +73,7 @@ pub struct BraileChar {
     bits: [bool; 8],
 }
 
+
 impl BraileChar {
     fn new() -> BraileChar {
         BraileChar {
@@ -76,12 +87,15 @@ impl BraileChar {
         char::from_u32(codepoint).unwrap()
     }
 
-    pub(crate) fn set_pixel(&mut self, x: u32, y: u32, width:u32, height:u32) -> bool {
+    pub(crate) fn set_pixel(&mut self, mode: &Mode, x: u32, y: u32, width:u32, height:u32) -> bool {
         // https://en.wikipedia.org/wiki/Braille_Patterns
         // 1 4
         // 2 5
         // 3 6
         // 7 8
+        if *mode==Mode::None {
+            return false;
+        }
         let col = x / (width/2);
         let row = y / (height/4);
         let bitnum = match col {
@@ -105,8 +119,9 @@ impl BraileChar {
             }
             _ => return false,
         };
-        let dirty = self.bits[bitnum-1] == false;
-        self.bits[bitnum-1] = true;
+        let draw = *mode == Mode::Draw;
+        let dirty = self.bits[bitnum-1] == !draw;
+        self.bits[bitnum-1] = draw;
         dirty
     }
 
@@ -116,21 +131,22 @@ impl BraileChar {
 
 #[cfg(test)]
 mod tests {
-    use crate::drawing::{BraileChar, Drawing, CHAR_WIDTH, CHAR_HEIGHT};
+    use crate::drawing::{BraileChar, Drawing, CHAR_WIDTH, CHAR_HEIGHT, Mode};
     #[test]
     fn test_braile_render() {
         let mut braile_char = BraileChar::new();
-        assert_eq!(braile_char.set_pixel(0, 0, CHAR_WIDTH, CHAR_HEIGHT), true);
+        assert_eq!(braile_char.set_pixel(&Mode::Draw, 0, 0, CHAR_WIDTH, CHAR_HEIGHT), true);
         assert_eq!(braile_char.render(), '⠁');
 
         let mut braile_char = BraileChar::new();
-        assert_eq!(braile_char.set_pixel(CHAR_WIDTH / 2, CHAR_HEIGHT * 3 / 4, CHAR_WIDTH, CHAR_HEIGHT), true);
+        assert_eq!(braile_char.set_pixel(&Mode::Draw, CHAR_WIDTH / 2, CHAR_HEIGHT * 3 / 4, CHAR_WIDTH, CHAR_HEIGHT), true);
         assert_eq!(braile_char.render(), '⢀');
     }
 
     #[test]
     fn test_drawing_render() {
         let mut drawing = Drawing::new(12, 60);
+        drawing.mode = Mode::Draw;
         drawing.update(0,0);
         assert_eq!(drawing.data[0][0].render(), '⠁');
         drawing.update(CHAR_WIDTH, 0);
